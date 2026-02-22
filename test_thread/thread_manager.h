@@ -7,7 +7,6 @@
 #include <condition_variable>
 #include <thread>
 #include <iostream>
-#include <cerrno>
 
 #ifdef DLL_EXPORTS
 #define DLL_API __declspec(dllexport)
@@ -32,11 +31,11 @@ public:
     
     // 用户线程调用的Wakeup函数，可以传入线程名或线程id
     void Wakeup(const std::string& threadName);
-    void Wakeup(pthread_t threadId);
+    void Wakeup(std::thread::id threadId);
     
     // 内部使用的方法，用于注册和注销线程
-    void registerThread(const std::string& threadName, pthread_t threadId);
-    void unregisterThread(pthread_t threadId);
+    void registerThread(const std::string& threadName, std::thread::id threadId);
+    void unregisterThread(std::thread::id threadId);
     
 private:
     ThreadManager();
@@ -50,10 +49,10 @@ private:
     static ThreadManager* instance;
     
     // 线程信息映射（主键：线程ID）
-    std::map<pthread_t, ThreadInfo> threadMap;
+    std::map<std::thread::id, ThreadInfo> threadMap;
     
     // 线程名到线程ID的映射（用于快速查找）
-    std::map<std::string, pthread_t> threadNameToId;
+    std::map<std::string, std::thread::id> threadNameToId;
     
     // 保护映射表的互斥锁
     std::mutex mapMutex;
@@ -65,6 +64,6 @@ private:
 // 方便用户使用的全局函数
 DLL_API void Sleep();
 DLL_API void Wakeup(const std::string& threadName);
-DLL_API void Wakeup(pthread_t threadId);
+DLL_API void Wakeup(std::thread::id threadId);
 
 #endif // THREAD_MANAGER_H

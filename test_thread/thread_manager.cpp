@@ -1,6 +1,5 @@
 #define DLL_EXPORTS
 #include "thread_manager.h"
-#include <unistd.h>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
@@ -34,7 +33,7 @@ ThreadManager* ThreadManager::getInstance() {
 }
 
 // 注册线程
-void ThreadManager::registerThread(const std::string& threadName, pthread_t threadId) {
+void ThreadManager::registerThread(const std::string& threadName, std::thread::id threadId) {
     // 懒加载初始化互斥锁（简化实现）
     initMapMutex();
     
@@ -43,7 +42,7 @@ void ThreadManager::registerThread(const std::string& threadName, pthread_t thre
     
     // 检查线程是否已存在（通过线程ID）
     if (threadMap.find(threadId) != threadMap.end()) {
-        std::cerr << "Error: Thread already registered: ID " << threadId << std::endl;
+        std::cerr << "Error: Thread already registered" << std::endl;
         return;
     }
     
@@ -63,12 +62,12 @@ void ThreadManager::registerThread(const std::string& threadName, pthread_t thre
     threadMap[threadId] = info;
     threadNameToId[threadName] = threadId;
     
-    std::cout << "Thread registered: " << threadName << " (ID: " << threadId << ")" << std::endl;
+    std::cout << "Thread registered: " << threadName << std::endl;
     // std::lock_guard会自动解锁
 }
 
 // 注销线程
-void ThreadManager::unregisterThread(pthread_t threadId) {
+void ThreadManager::unregisterThread(std::thread::id threadId) {
     // 懒加载初始化互斥锁（简化实现）
     initMapMutex();
     
@@ -85,16 +84,16 @@ void ThreadManager::unregisterThread(pthread_t threadId) {
         
         // std::condition_variable和std::mutex会自动销毁
         
-        std::cout << "Thread unregistered: " << threadName << " (ID: " << threadId << ")" << std::endl;
+        std::cout << "Thread unregistered: " << threadName << std::endl;
     } else {
-        std::cerr << "Error: Thread not found for unregistration: ID " << threadId << std::endl;
+        std::cerr << "Error: Thread not found for unregistration" << std::endl;
     }
     // std::lock_guard会自动解锁
 }
 
 // Sleep函数实现，不需要参数
 void ThreadManager::Sleep() {
-    pthread_t currentThreadId = pthread_self();
+    std::thread::id currentThreadId = std::this_thread::get_id();
     
     // 懒加载初始化互斥锁（简化实现）
     initMapMutex();
@@ -151,10 +150,10 @@ void ThreadManager::Wakeup(const std::string& threadName) {
         return;
     }
     
-    pthread_t threadId = nameIt->second;
+    std::thread::id threadId = nameIt->second;
     auto it = threadMap.find(threadId);
     if (it == threadMap.end()) {
-        std::cerr << "Error: Thread not found: ID " << threadId << std::endl;
+        std::cerr << "Error: Thread not found" << std::endl;
         return;
     }
     
@@ -162,13 +161,13 @@ void ThreadManager::Wakeup(const std::string& threadName) {
     if (it->second.sleeping) {
         it->second.sleeping = false;
         it->second.cond.notify_one(); // 通知等待的线程
-        std::cout << "Waking up thread: " << threadName << " (ID: " << threadId << ")" << std::endl;
+        std::cout << "Waking up thread: " << threadName << std::endl;
     }
     // std::lock_guard会自动解锁
 }
 
 // 根据线程ID唤醒线程
-void ThreadManager::Wakeup(pthread_t threadId) {
+void ThreadManager::Wakeup(std::thread::id threadId) {
     // 懒加载初始化互斥锁（简化实现）
     initMapMutex();
     
@@ -178,7 +177,7 @@ void ThreadManager::Wakeup(pthread_t threadId) {
     // 检查线程是否已注册
     auto it = threadMap.find(threadId);
     if (it == threadMap.end()) {
-        std::cerr << "Error: Thread not found: ID " << threadId << std::endl;
+        std::cerr << "Error: Thread not found" << std::endl;
         return;
     }
     
@@ -188,7 +187,7 @@ void ThreadManager::Wakeup(pthread_t threadId) {
     if (it->second.sleeping) {
         it->second.sleeping = false;
         it->second.cond.notify_one(); // 通知等待的线程
-        std::cout << "Waking up thread: " << threadName << " (ID: " << threadId << ")" << std::endl;
+        std::cout << "Waking up thread: " << threadName << std::endl;
     }
     // std::lock_guard会自动解锁
 }
@@ -204,6 +203,6 @@ void Wakeup(const std::string& threadName) {
 }
 
 // 全局Wakeup函数（线程ID）
-void Wakeup(pthread_t threadId) {
+void Wakeup(std::thread::id threadId) {
     ThreadManager::getInstance()->Wakeup(threadId);
 }
