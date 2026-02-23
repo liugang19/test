@@ -81,7 +81,8 @@ void ThreadManagerPthread::registerThread(const std::string& threadName, pthread
     }
     
     // 创建并初始化线程信息结构体
-    ThreadInfoPthread info(threadName);
+    ThreadInfoPthread info;
+    info.name = threadName;
     
     // 初始化条件变量
     ret = pthread_cond_init(&info.cond, NULL);
@@ -166,7 +167,7 @@ void ThreadManagerPthread::Sleep() {
     // 懒加载初始化互斥锁
     initMapMutex();
     
-    // 加锁保护映射表
+    // 加锁保护映射表，获取信息并设置睡眠状态
     ret = pthread_mutex_lock(&mapMutex);
     if (ret != 0) {
         std::cerr << "Error: pthread_mutex_lock failed for mapMutex: " << ret << std::endl;
@@ -184,6 +185,7 @@ void ThreadManagerPthread::Sleep() {
     std::string threadName = it->second.name;
     pthread_mutex_t& mutex = it->second.mutex;
     pthread_cond_t& cond = it->second.cond;
+    it->second.sleeping = true;
     
     // 解锁映射表
     ret = pthread_mutex_unlock(&mapMutex);
@@ -199,22 +201,6 @@ void ThreadManagerPthread::Sleep() {
         return;
     }
     
-    // 更新睡眠状态
-    {
-        ret = pthread_mutex_lock(&mapMutex);
-        if (ret != 0) {
-            std::cerr << "Error: pthread_mutex_lock failed for mapMutex: " << ret << std::endl;
-            pthread_mutex_unlock(&mutex);
-            return;
-        }
-        threadMap[currentThreadId].sleeping = true;
-        ret = pthread_mutex_unlock(&mapMutex);
-        if (ret != 0) {
-            std::cerr << "Error: pthread_mutex_unlock failed for mapMutex: " << ret << std::endl;
-            pthread_mutex_unlock(&mutex);
-            return;
-        }
-    }
     std::cout << threadName << " is going to sleep..." << std::endl;
     
     // 等待条件变量

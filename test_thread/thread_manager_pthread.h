@@ -16,14 +16,9 @@
 // 线程信息结构体，包含所有线程相关信息
 struct ThreadInfoPthread {
     std::string name;        // 线程名
-    bool sleeping;           // 睡眠状态
+    bool sleeping{false};    // 睡眠状态
     pthread_cond_t cond;     // 条件变量
     pthread_mutex_t mutex;   // 互斥锁
-    
-    // 构造函数
-    ThreadInfoPthread(const std::string& name) : name(name), sleeping(false) {
-        // 条件变量和互斥锁会在registerThread中初始化
-    }
 };
 
 class DLL_API ThreadManagerPthread {
