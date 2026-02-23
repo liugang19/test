@@ -1,0 +1,12 @@
+CC = g++
+CFLAGS = -Wall -g
+TARGET = test_program_jp.exe
+SRCS = test_program_jp.cpp thread_manager_jp.cpp
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS)
+
+clean:
+	del $(TARGET)

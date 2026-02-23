@@ -7,7 +7,6 @@
 #include <condition_variable>
 #include <thread>
 #include <iostream>
-#include <memory>
 
 #ifdef DLL_EXPORTS
 #define DLL_API __declspec(dllexport)
@@ -15,26 +14,26 @@
 #define DLL_API __declspec(dllimport)
 #endif
 
-// 线程信息结构体，包含所有线程相关信息
+// スレッド情報構造体、すべてのスレッド関連情報を含む
 struct ThreadInfo {
-    std::string name;                                  // 线程名
-    std::shared_ptr<std::mutex> mutex;                // 互斥锁
-    std::shared_ptr<std::condition_variable> cond;    // 条件变量
-    bool sleeping{false};                              // 睡眠状态
+    std::string name;                                  // スレッド名
+    std::shared_ptr<std::mutex> mutex;                // ミューテックス
+    std::shared_ptr<std::condition_variable> cond;    // 条件変数
+    bool sleeping{false};                              // スリープ状態
 };
 
 class DLL_API ThreadManager {
 public:
     static ThreadManager* getInstance();
     
-    // 用户线程调用的Sleep函数，不需要参数
+    // ユーザースレッドが呼び出すSleep関数、パラメータは不要
     void Sleep();
     
-    // 用户线程调用的Wakeup函数，可以传入线程名或线程id
+    // ユーザースレッドが呼び出すWakeup関数、スレッド名またはスレッドIDを渡すことができる
     void Wakeup(const std::string& threadName);
     void Wakeup(std::thread::id threadId);
     
-    // 内部使用的方法，用于注册和注销线程
+    // 内部使用メソッド、スレッドの登録と登録解除に使用
     void registerThread(const std::string& threadName, std::thread::id threadId);
     void unregisterThread(std::thread::id threadId);
     
@@ -46,17 +45,17 @@ private:
     
     static ThreadManager* instance;
     
-    // 线程信息映射（主键：线程ID）
+    // スレッド情報マップ（主キー：スレッドID）
     std::map<std::thread::id, ThreadInfo> threadMap;
     
-    // 线程名到线程ID的映射（用于快速查找）
+    // スレッド名からスレッドIDへのマップ（高速検索用）
     std::map<std::string, std::thread::id> threadNameToId;
     
-    // 保护映射表的互斥锁
+    // マップを保護するミューテックス
     std::mutex mapMutex;
 };
 
-// 方便用户使用的全局函数
+// ユーザーが使用しやすいようにするグローバル関数
 DLL_API void Sleep();
 DLL_API void Wakeup(const std::string& threadName);
 DLL_API void Wakeup(std::thread::id threadId);

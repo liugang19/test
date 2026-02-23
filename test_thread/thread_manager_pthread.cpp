@@ -81,9 +81,7 @@ void ThreadManagerPthread::registerThread(const std::string& threadName, pthread
     }
     
     // 创建并初始化线程信息结构体
-    ThreadInfoPthread info;
-    info.name = threadName;
-    info.sleeping = false;
+    ThreadInfoPthread info(threadName);
     
     // 初始化条件变量
     ret = pthread_cond_init(&info.cond, NULL);
@@ -202,17 +200,74 @@ void ThreadManagerPthread::Sleep() {
     }
     
     // 更新睡眠状态
-    threadMap[currentThreadId].sleeping = true;
+    {
+        ret = pthread_mutex_lock(&mapMutex);
+        if (ret != 0) {
+            std::cerr << "Error: pthread_mutex_lock failed for mapMutex: " << ret << std::endl;
+            pthread_mutex_unlock(&mutex);
+            return;
+        }
+        threadMap[currentThreadId].sleeping = true;
+        ret = pthread_mutex_unlock(&mapMutex);
+        if (ret != 0) {
+            std::cerr << "Error: pthread_mutex_unlock failed for mapMutex: " << ret << std::endl;
+            pthread_mutex_unlock(&mutex);
+            return;
+        }
+    }
     std::cout << threadName << " is going to sleep..." << std::endl;
     
     // 等待条件变量
-    while (threadMap[currentThreadId].sleeping) {
+    while (true) {
+        ret = pthread_mutex_lock(&mapMutex);
+        if (ret != 0) {
+            std::cerr << "Error: pthread_mutex_lock failed for mapMutex: " << ret << std::endl;
+            pthread_mutex_unlock(&mutex);
+            return;
+        }
+        
+        bool shouldWait = true;
+        auto it = threadMap.find(currentThreadId);
+        if (it != threadMap.end()) {
+            shouldWait = it->second.sleeping;
+        } else {
+            shouldWait = false; // 线程已注销，退出等待
+        }
+        
+        ret = pthread_mutex_unlock(&mapMutex);
+        if (ret != 0) {
+            std::cerr << "Error: pthread_mutex_unlock failed for mapMutex: " << ret << std::endl;
+            pthread_mutex_unlock(&mutex);
+            return;
+        }
+        
+        if (!shouldWait) {
+            break;
+        }
+        
         ret = pthread_cond_wait(&cond, &mutex);
         if (ret != 0) {
             // 在Linux上，EINTR表示被信号中断
             // 在QNX上，被信号中断会返回EOK，不会进入此分支
             std::cerr << "Error: pthread_cond_wait failed for thread " << threadName << ": " << ret << std::endl;
-            threadMap[currentThreadId].sleeping = false;
+            {
+                ret = pthread_mutex_lock(&mapMutex);
+                if (ret != 0) {
+                    std::cerr << "Error: pthread_mutex_lock failed for mapMutex: " << ret << std::endl;
+                    pthread_mutex_unlock(&mutex);
+                    return;
+                }
+                auto it = threadMap.find(currentThreadId);
+                if (it != threadMap.end()) {
+                    it->second.sleeping = false;
+                }
+                ret = pthread_mutex_unlock(&mapMutex);
+                if (ret != 0) {
+                    std::cerr << "Error: pthread_mutex_unlock failed for mapMutex: " << ret << std::endl;
+                    pthread_mutex_unlock(&mutex);
+                    return;
+                }
+            }
             break;
         }
         // 无论在Linux还是QNX上，都会执行到这里

@@ -1,5 +1,5 @@
 #define DLL_EXPORTS
-#include "thread_manager.h"
+#include "thread_manager_jp.h"
 #include <mutex>
 #include <condition_variable>
 #include <thread>
@@ -7,65 +7,65 @@
 #include <memory>
 #include <atomic>
 
-// 静态实例初始化
+// 静的インスタンス初期化
 ThreadManager* ThreadManager::instance = new ThreadManager();
 
-// 构造函数
+// コンストラクタ
 ThreadManager::ThreadManager() {
-    // std::mutex会自动初始化，不需要手动操作
+    // std::mutexは自動的に初期化されるため、手動操作は不要
 }
 
-// 析构函数
+// デストラクタ
 ThreadManager::~ThreadManager() {
-    // std::mutex和std::condition_variable会自动销毁，不需要手动清理
+    // std::mutexとstd::condition_variableは自動的に破棄されるため、手動クリーンアップは不要
 }
 
-// 获取单例实例
+// シングルトンインスタンスを取得
 ThreadManager* ThreadManager::getInstance() {
     return instance;
 }
 
-// 注册线程
+// スレッドを登録
 void ThreadManager::registerThread(const std::string& threadName, std::thread::id threadId) {
-    // 使用std::lock_guard自动管理锁的生命周期
+    // std::lock_guardを使用してロックのライフサイクルを自動的に管理
     std::lock_guard<std::mutex> lock(mapMutex);
     
-    // 检查线程是否已存在（通过线程ID）
+    // スレッドが既に存在するかどうかを確認（スレッドIDによる）
     if (threadMap.find(threadId) != threadMap.end()) {
         std::cerr << "Error: Thread already registered" << std::endl;
         return;
     }
     
-    // 检查线程名是否已存在
+    // スレッド名が既に存在するかどうかを確認
     if (threadNameToId.find(threadName) != threadNameToId.end()) {
         std::cerr << "Error: Thread name already exists: " << threadName << std::endl;
         return;
     }
     
-    // 创建并初始化线程信息结构体
+    // スレッド情報構造体を作成して初期化
     ThreadInfo info;
     info.name = threadName;
     info.mutex = std::make_shared<std::mutex>();
     info.cond = std::make_shared<std::condition_variable>();
     
-    // 添加到映射表
+    // マップに追加
     threadMap.emplace(threadId, info);
     threadNameToId[threadName] = threadId;
     
     std::cout << "Thread registered: " << threadName << std::endl;
-    // std::lock_guard会自动解锁
+    // std::lock_guardは自動的にロックを解除
 }
 
-// 注销线程
+// スレッドの登録を解除
 void ThreadManager::unregisterThread(std::thread::id threadId) {
-    // 使用std::lock_guard自动管理锁的生命周期
+    // std::lock_guardを使用してロックのライフサイクルを自動的に管理
     std::lock_guard<std::mutex> lock(mapMutex);
     
     auto it = threadMap.find(threadId);
     if (it != threadMap.end()) {
         std::string threadName = it->second.name;
         
-        // 清理映射表
+        // マップから削除
         threadNameToId.erase(threadName);
         threadMap.erase(it);
         
@@ -73,21 +73,21 @@ void ThreadManager::unregisterThread(std::thread::id threadId) {
     } else {
         std::cerr << "Error: Thread not found for unregistration" << std::endl;
     }
-    // std::lock_guard会自动解锁
+    // std::lock_guardは自動的にロックを解除
 }
 
-// Sleep函数实现，不需要参数
+// Sleep関数の実装、パラメータは不要
 void ThreadManager::Sleep() {
     std::thread::id currentThreadId = std::this_thread::get_id();
     std::string threadName;
     std::shared_ptr<std::mutex> mutex;
     std::shared_ptr<std::condition_variable> cond;
     
-    // 加锁保护映射表，获取信息并设置睡眠状态
+    // マップを保護するためにロック、情報を取得してスリープ状態を設定
     {
         std::lock_guard<std::mutex> mapLock(mapMutex);
         
-        // 检查线程是否已注册
+        // スレッドが登録されているかどうかを確認
         auto it = threadMap.find(currentThreadId);
         if (it == threadMap.end()) {
             std::cerr << "Error: Thread not registered!" << std::endl;
@@ -98,35 +98,35 @@ void ThreadManager::Sleep() {
         mutex = it->second.mutex;
         cond = it->second.cond;
         it->second.sleeping = true;
-    } // 解锁映射表（std::lock_guard离开作用域）
+    } // マップのロックを解除（std::lock_guardは自動的に解除）
     
-    // 加锁线程互斥锁
+    // スレッドミューテックスをロック
     std::unique_lock<std::mutex> threadLock(*mutex);
     
     std::cout << threadName << " is going to sleep..." << std::endl;
     
-    // 等待条件变量，使用lambda表达式作为谓词
-    // 注意：即使notify_one()在wait()之前被调用，谓词也会检查sleeping状态
-    // 如果sleeping已经是false，wait()会立即返回，不会丢失通知
+    // 条件変数を待機、ラムダ式を述語として使用
+    // 注意：たとえwait()の前にnotify_one()が呼び出されても、述語がsleeping状態をチェックします
+    // sleepingが既にfalseの場合、wait()はすぐに戻り、通知が失われることはありません
     cond->wait(threadLock, [this, currentThreadId]() {
         std::lock_guard<std::mutex> mapLock(mapMutex);
         auto it = threadMap.find(currentThreadId);
         if (it == threadMap.end()) {
-            return true; // 线程已注销，退出等待
+            return true; // スレッドが登録解除されたため、待機を終了
         }
         return !it->second.sleeping;
     });
     
     std::cout << threadName << " is woken up!" << std::endl;
-    // std::unique_lock会自动解锁
+    // std::unique_lockは自動的にロックを解除
 }
 
-// 根据线程名唤醒线程
+// スレッド名によってスレッドを wake up
 void ThreadManager::Wakeup(const std::string& threadName) {
-    // 使用std::lock_guard自动管理锁的生命周期
+    // std::lock_guardを使用してロックのライフサイクルを自動的に管理
     std::lock_guard<std::mutex> lock(mapMutex);
     
-    // 查找线程ID
+    // スレッドIDを検索
     auto nameIt = threadNameToId.find(threadName);
     if (nameIt == threadNameToId.end()) {
         std::cerr << "Error: Thread not found: " << threadName << std::endl;
@@ -140,21 +140,21 @@ void ThreadManager::Wakeup(const std::string& threadName) {
         return;
     }
     
-    // 检查线程是否在睡眠
+    // スレッドがスリープ中かどうかを確認
     if (it->second.sleeping) {
         it->second.sleeping = false;
-        it->second.cond->notify_one(); // 通知等待的线程
+        it->second.cond->notify_one(); // 待機中のスレッドに通知
         std::cout << "Waking up thread: " << threadName << std::endl;
     }
-    // std::lock_guard会自动解锁
+    // std::lock_guardは自動的にロックを解除
 }
 
-// 根据线程ID唤醒线程
+// スレッドIDによってスレッドを wake up
 void ThreadManager::Wakeup(std::thread::id threadId) {
-    // 使用std::lock_guard自动管理锁的生命周期
+    // std::lock_guardを使用してロックのライフサイクルを自動的に管理
     std::lock_guard<std::mutex> lock(mapMutex);
     
-    // 检查线程是否已注册
+    // スレッドが登録されているかどうかを確認
     auto it = threadMap.find(threadId);
     if (it == threadMap.end()) {
         std::cerr << "Error: Thread not found" << std::endl;
@@ -163,26 +163,26 @@ void ThreadManager::Wakeup(std::thread::id threadId) {
     
     std::string threadName = it->second.name;
     
-    // 检查线程是否在睡眠
+    // スレッドがスリープ中かどうかを確認
     if (it->second.sleeping) {
         it->second.sleeping = false;
-        it->second.cond->notify_one(); // 通知等待的线程
+        it->second.cond->notify_one(); // 待機中のスレッドに通知
         std::cout << "Waking up thread: " << threadName << std::endl;
     }
-    // std::lock_guard会自动解锁
+    // std::lock_guardは自動的にロックを解除
 }
 
-// 全局Sleep函数
+// グローバルSleep関数
 void Sleep() {
     ThreadManager::getInstance()->Sleep();
 }
 
-// 全局Wakeup函数（线程名）
+// グローバルWakeup関数（スレッド名）
 void Wakeup(const std::string& threadName) {
     ThreadManager::getInstance()->Wakeup(threadName);
 }
 
-// 全局Wakeup函数（线程ID）
+// グローバルWakeup関数（スレッドID）
 void Wakeup(std::thread::id threadId) {
     ThreadManager::getInstance()->Wakeup(threadId);
 }

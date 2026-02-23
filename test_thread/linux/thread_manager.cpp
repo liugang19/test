@@ -3,27 +3,22 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
-#include <lock_guard>
-#include <unique_lock>
+#include <iostream>
+#include <memory>
+#include <atomic>
+#include <pthread.h>
 
 // 静态实例初始化
 ThreadManager* ThreadManager::instance = new ThreadManager();
 
 // 构造函数
-ThreadManager::ThreadManager() : mapMutexInitialized(true) {
+ThreadManager::ThreadManager() {
     // std::mutex会自动初始化，不需要手动操作
 }
 
 // 析构函数
 ThreadManager::~ThreadManager() {
     // std::mutex和std::condition_variable会自动销毁，不需要手动清理
-    // 此析构函数保留以保持兼容性
-}
-
-// 初始化mapMutex的方法（使用std::mutex时简化实现）
-void ThreadManager::initMapMutex() {
-    // std::mutex会自动初始化，此方法保留以保持兼容性
-    mapMutexInitialized = true;
 }
 
 // 获取单例实例
@@ -43,9 +38,6 @@ pthread_t ThreadManager::findThreadIdByName(const std::string& threadName) {
 
 // 注册线程
 void ThreadManager::registerThread(const std::string& threadName, pthread_t threadId) {
-    // 延迟初始化mapMutex（简化实现）
-    initMapMutex();
-    
     // 使用std::lock_guard自动管理锁的生命周期
     std::lock_guard<std::mutex> lock(mapMutex);
     
@@ -64,8 +56,8 @@ void ThreadManager::registerThread(const std::string& threadName, pthread_t thre
     // 创建并初始化线程信息结构体
     ThreadInfo info;
     info.name = threadName;
-    info.sleeping = false;
-    // std::condition_variable和std::mutex会自动初始化
+    info.mutex = std::make_shared<std::mutex>();
+    info.cond = std::make_shared<std::condition_variable>();
     
     // 添加到映射表
     threadMap[threadId] = info;
@@ -76,9 +68,6 @@ void ThreadManager::registerThread(const std::string& threadName, pthread_t thre
 
 // 注销线程
 void ThreadManager::unregisterThread(pthread_t threadId) {
-    // 延迟初始化mapMutex（简化实现）
-    initMapMutex();
-    
     // 使用std::lock_guard自动管理锁的生命周期
     std::lock_guard<std::mutex> lock(mapMutex);
     
@@ -101,41 +90,42 @@ void ThreadManager::unregisterThread(pthread_t threadId) {
 // Sleep函数实现，不需要参数
 void ThreadManager::Sleep() {
     pthread_t currentThreadId = pthread_self();
+    std::string threadName;
+    std::shared_ptr<std::mutex> mutex;
+    std::shared_ptr<std::condition_variable> cond;
     
-    // 延迟初始化mapMutex（简化实现）
-    initMapMutex();
-    
-    // 加锁保护映射表
-    std::lock_guard<std::mutex> mapLock(mapMutex);
-    
-    // 检查线程是否已注册
-    auto it = threadMap.find(currentThreadId);
-    if (it == threadMap.end()) {
-        std::cerr << "Error: Thread not registered!" << std::endl;
-        return;
-    }
-    
-    std::string threadName = it->second.name;
-    std::mutex& mutex = it->second.mutex;
-    std::condition_variable& cond = it->second.cond;
-    
-    // 解锁映射表（std::lock_guard会自动解锁）
-    
-    // 加锁线程互斥锁
-    std::unique_lock<std::mutex> threadLock(mutex);
-    
-    // 更新睡眠状态
+    // 加锁保护映射表，获取信息并设置睡眠状态
     {
         std::lock_guard<std::mutex> mapLock(mapMutex);
-        threadMap[currentThreadId].sleeping = true;
-    }
+        
+        // 检查线程是否已注册
+        auto it = threadMap.find(currentThreadId);
+        if (it == threadMap.end()) {
+            std::cerr << "Error: Thread not registered!" << std::endl;
+            return;
+        }
+        
+        threadName = it->second.name;
+        mutex = it->second.mutex;
+        cond = it->second.cond;
+        it->second.sleeping = true;
+    } // 解锁映射表（std::lock_guard离开作用域）
+    
+    // 加锁线程互斥锁
+    std::unique_lock<std::mutex> threadLock(*mutex);
     
     std::cout << threadName << " is going to sleep..." << std::endl;
     
     // 等待条件变量，使用lambda表达式作为谓词
-    cond.wait(threadLock, [this, currentThreadId]() {
+    // 注意：即使notify_one()在wait()之前被调用，谓词也会检查sleeping状态
+    // 如果sleeping已经是false，wait()会立即返回，不会丢失通知
+    cond->wait(threadLock, [this, currentThreadId]() {
         std::lock_guard<std::mutex> mapLock(mapMutex);
-        return !threadMap[currentThreadId].sleeping;
+        auto it = threadMap.find(currentThreadId);
+        if (it == threadMap.end()) {
+            return true; // 线程已注销，退出等待
+        }
+        return !it->second.sleeping;
     });
     
     std::cout << threadName << " is woken up!" << std::endl;
@@ -144,9 +134,6 @@ void ThreadManager::Sleep() {
 
 // 根据线程名唤醒线程
 void ThreadManager::Wakeup(const std::string& threadName) {
-    // 延迟初始化mapMutex（简化实现）
-    initMapMutex();
-    
     // 使用std::lock_guard自动管理锁的生命周期
     std::lock_guard<std::mutex> lock(mapMutex);
     
@@ -161,7 +148,7 @@ void ThreadManager::Wakeup(const std::string& threadName) {
     auto it = threadMap.find(threadId);
     if (it != threadMap.end() && it->second.sleeping) {
         it->second.sleeping = false;
-        it->second.cond.notify_one(); // 通知等待的线程
+        it->second.cond->notify_one(); // 通知等待的线程
         std::cout << "Waking up thread: " << threadName << " (ID: " << threadId << ")" << std::endl;
     }
     // std::lock_guard会自动解锁
@@ -169,9 +156,6 @@ void ThreadManager::Wakeup(const std::string& threadName) {
 
 // 根据线程ID唤醒线程
 void ThreadManager::Wakeup(pthread_t threadId) {
-    // 延迟初始化mapMutex（简化实现）
-    initMapMutex();
-    
     // 使用std::lock_guard自动管理锁的生命周期
     std::lock_guard<std::mutex> lock(mapMutex);
     
@@ -187,7 +171,7 @@ void ThreadManager::Wakeup(pthread_t threadId) {
     // 检查线程是否在睡眠
     if (it->second.sleeping) {
         it->second.sleeping = false;
-        it->second.cond.notify_one(); // 通知等待的线程
+        it->second.cond->notify_one(); // 通知等待的线程
         std::cout << "Waking up thread: " << threadName << " (ID: " << threadId << ")" << std::endl;
     }
     // std::lock_guard会自动解锁

@@ -11,10 +11,10 @@
 
 // 线程信息结构体，包含所有线程相关信息
 struct ThreadInfo {
-    std::string name;                // 线程名
-    bool sleeping;                   // 睡眠状态
-    std::condition_variable cond;    // 条件变量
-    std::mutex mutex;                // 互斥锁
+    std::string name;                                  // 线程名
+    std::shared_ptr<std::mutex> mutex;                // 互斥锁
+    std::shared_ptr<std::condition_variable> cond;    // 条件变量
+    bool sleeping{false};                              // 睡眠状态
 };
 
 class ThreadManager {
@@ -45,13 +45,9 @@ private:
     
     // 保护映射表的互斥锁
     std::mutex mapMutex;
-    bool mapMutexInitialized; // 跟踪mapMutex是否已初始化
     
     // 辅助方法：通过线程名查找线程ID
     pthread_t findThreadIdByName(const std::string& threadName);
-    
-    // 初始化mapMutex的方法
-    void initMapMutex();
 };
 
 // 方便用户使用的全局函数
